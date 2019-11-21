@@ -1,0 +1,9 @@
+.gradle/
+.idea/
+TrivagoService.iml
+build/
+gradle/
+gradlew
+gradlew.bat
+libAxis2/
+bin/

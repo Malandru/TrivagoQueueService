@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:jms="http://www.springframework.org/schema/jms"
+       xmlns:p="http://www.springframework.org/schema/p"
+       xmlns:jee="http://www.springframework.org/schema/jee"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+    http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
+    http://www.springframework.org/schema/jms
+    http://www.springframework.org/schema/jms/spring-jms-3.0.xsd
+    http://www.springframework.org/schema/jee
+    http://www.springframework.org/schema/jee/spring-jee.xsd">
+    <bean class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
+        <property name="ignoreResourceNotFound" value="true"/>
+        <property name="locations">
+            <list>
+                <value>classpath:consumer-conf.properties</value>
+                <value>${CONSUMER_SPRING_PROPERTIES_PATH}/consumer-conf.properties
+                </value>
+            </list>
+        </property>
+    </bean>
+
+
+<!--BUSQUEDA QUEUE CONFIGURATION-->
+    <bean id="jndiTemplate" class="org.springframework.jndi.JndiTemplate">
+        <property name="environment">
+            <props>
+                <prop key="java.naming.factory.initial">org.jnp.interfaces.NamingContextFactory</prop>
+                <prop key="java.naming.factory.url.pkgs">org.jnp.interfaces:org.jboss.naming</prop>
+                <prop key="java.naming.provider.url">${consumer.spring.jms.jndi.url}</prop>
+            </props>
+        </property>
+    </bean>
+
+    <bean id="jndiConnectionFactory"
+          class="org.springframework.jndi.JndiObjectFactoryBean">
+        <property name="jndiTemplate" ref="jndiTemplate"/>
+        <property name="jndiName" value="java:ConnectionFactory"/>
+    </bean>
+
+
+    <bean id="jmsTransactionManager" class="org.springframework.jms.connection.JmsTransactionManager">
+        <property name="connectionFactory" ref="jndiConnectionFactory" />
+    </bean>
+
+    <bean id="myQueue" class="org.springframework.jndi.JndiObjectFactoryBean">
+        <property name="jndiTemplate" ref="jndiTemplate"/>
+        <property name="jndiName" value="${consumer.spring.jms.queue.name}"/>
+    </bean>
+
+    <bean id="jmsTemplate" class="org.springframework.jms.core.JmsTemplate">
+        <property name="connectionFactory" ref="jndiConnectionFactory" />
+    </bean>
+
+    <bean id="consumerSpringContainer"
+          class="org.springframework.jms.listener.DefaultMessageListenerContainer">
+        <property name="connectionFactory" ref="jndiConnectionFactory"/>
+        <property name="destination" ref="myQueue"/>
+        <property name="messageListener" ref="busquedaListener"/>
+
+        <property name="concurrentConsumers" value="${consumer.spring.jms.concurrent.consumers}"/>
+        <property name="maxConcurrentConsumers" value="${consumer.spring.jms.max.concurrent.consumers}"/>
+        <property name="autoStartup" value="true"/>
+    </bean>
+
+    <!--BUSQUEDA DEPENDENCY INJECTION-->
+    <bean id="busquedaListener" class="com.trivago.service.BusquedaListener">
+        <property name="busquedaBusiness" ref="busquedaBusiness"/>
+    </bean>
+    <bean id="responseSender" class="com.trivago.service.ResponseSender">
+        <property name="connectionFactory" ref="jndiConnectionFactory"/>
+        <property name="destinationResolver" ref="jndiDestinationResolver"/>
+    </bean>
+    <bean id="jndiDestinationResolver"
+          class="org.springframework.jms.support.destination.JndiDestinationResolver">
+        <property name="jndiTemplate" ref="jndiTemplate"/>
+        <property name="cache" value="true"/>
+    </bean>
+    <bean id="busquedaBusiness" class="com.trivago.service.BusquedaBusiness">
+        <property name="responseSender" ref="responseSender"/>
+        <property name="paymentSender" ref="paymentSender"/>
+    </bean>
+
+
+    <!--BANK QUEUE CONFIGURATION-->
+    <bean id="jndiTemplateBank" class="org.springframework.jndi.JndiTemplate">
+        <property name="environment">
+            <props>
+                <prop key="java.naming.factory.initial">org.jnp.interfaces.NamingContextFactory</prop>
+                <prop key="java.naming.factory.url.pkgs">org.jnp.interfaces:org.jboss.naming</prop>
+                <prop key="java.naming.provider.url">${bank.url}</prop>
+            </props>
+        </property>
+    </bean>
+
+    <bean id="bankConnectionFactory"
+          class="org.springframework.jndi.JndiObjectFactoryBean">
+        <property name="jndiTemplate" ref="jndiTemplateBank"/>
+        <property name="jndiName" value="java:ConnectionFactory"/>
+    </bean>
+
+
+    <bean id="jmsBankTransactionManager" class="org.springframework.jms.connection.JmsTransactionManager">
+        <property name="connectionFactory" ref="bankConnectionFactory" />
+    </bean>
+
+    <bean id="voucherQueue" class="org.springframework.jndi.JndiObjectFactoryBean">
+        <property name="jndiTemplate" ref="jndiTemplateBank"/>
+        <property name="jndiName" value="${bank.queue}"/>
+    </bean>
+
+    <bean id="jmsBankTemplate" class="org.springframework.jms.core.JmsTemplate">
+        <property name="connectionFactory" ref="bankConnectionFactory" />
+    </bean>
+
+    <bean id="voucherSpringConsumer"
+          class="org.springframework.jms.listener.DefaultMessageListenerContainer">
+        <property name="connectionFactory" ref="bankConnectionFactory"/>
+        <property name="destination" ref="voucherQueue"/>
+        <property name="messageListener" ref="voucherListener"/>
+
+        <property name="concurrentConsumers" value="${bank.min.consumers}"/>
+        <property name="maxConcurrentConsumers" value="${bank.max.consumers}"/>
+        <property name="autoStartup" value="true"/>
+    </bean>
+
+    <!--BANK DEPENDENCY INJECTION-->
+    <bean id="voucherListener" class="com.trivago.service.bank.VoucherListener">
+        <property name="reservationBusiness" ref="reservationBusiness"/>
+    </bean>
+    <bean id="paymentSender" class="com.trivago.service.bank.PaymentSender">
+        <property name="connectionFactory" ref="bankConnectionFactory"/>
+        <property name="destinationResolver" ref="jndiPaymentDestinationResolver"/>
+    </bean>
+    <bean id="jndiPaymentDestinationResolver" class="org.springframework.jms.support.destination.JndiDestinationResolver">
+        <property name="jndiTemplate" ref="jndiTemplateBank"/>
+        <property name="cache" value="true"/>
+    </bean>
+    <bean id="reservationBusiness" class="com.trivago.service.reservation.ReservationBusiness">
+        <property name="responseSender" ref="responseSender"/>
+    </bean>
+
+</beans>
